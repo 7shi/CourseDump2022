@@ -67,37 +67,70 @@ function stopAll() {
 let maxConnections = 15;
 let queue = [];
 
+async function downloadFiles() {
+	console.log("start dumping", queue.length, "files...");
+	const header = "data:text/plain;charset=utf-8,";
+	let url = header, no = 0, i = 0;
+	async function dwl() {
+		const filename = `files${(++no).toString().padStart(3, "0")}.txt`;
+		console.log("dumping:", filename, `(${i}/${queue.length})`);
+		try {
+			const id = await download({ url, filename });
+			await chrome.downloads.erase({ id });
+		} catch (e) {
+			console.error(e);
+		}
+		url = header;
+	}
+	const maxlen = 100 * 1024 * 1024;
+	for (; i < queue.length; i++) {
+		const [u, f] = queue[i];
+		url += encodeURIComponent(u + "\t" + f + "\n");
+		if (url.length > maxlen) await dwl();
+	}
+	if (url.length > header.length) await dwl();
+	console.log("dumping done.");
+}
+
+let total = 0;
+let done = 0;
+
 chrome.runtime.onMessage.addListener(async (arg, sender, sendResponse) => {
 	if (arg.type == "coursedump_stop") {
 		stopAll();
 	} else if (arg.type == "coursedump_clear") {
 		queue = [];
+		total = done = 0;
 	} else if (arg.type === "coursedump_add") {
 		queue.push(...arg.collection);
+		total += arg.collection.length;
+	} else if (arg.type === "coursedump_dump") {
+		downloadFiles();
 	} else if (arg.type === "coursedump_download") {
 		stopFlag = false;
-		if (arg.collection) queue = arg.collection;
-		const total = queue.length;
+		if (arg.collection) {
+			queue = arg.collection;
+			total = queue.length;
+			done = 0;
+		}
 		if (arg.max) maxConnections = arg.max;
-		let done = 0;
-		let pids = Array(maxConnections).fill().map((_, i) => i + 1);
+		if (arg.dump) await downloadFiles();
+		let pids = Array(Math.min(queue.length, maxConnections)).fill().map((_, i) => i + 1);
+		console.log("starting", pids.length, "promise(s)...");
 		const results = await Promise.allSettled(pids.map(async pid => {
 			while (!stopFlag && queue.length) {
 				const [url, filename] = queue.shift();
 				await sleep(200);
-				let id;
 				try {
-					id = await download({ url, filename });
+					const id = await download({ url, filename, conflictAction: "overwrite" });
+					await chrome.downloads.erase({ id });
 				} catch (e) {
-					console.error(filename, e);
+					// console.error(filename, e);
 					chrome.tabs.sendMessage(sender.tab.id, {
 						type: "coursedump_error",
 						error: e.message,
 						url, filename
 					});
-				}
-				if (id !== undefined) {
-					await chrome.downloads.erase({ id });
 				}
 				done++;
 				chrome.tabs.sendMessage(sender.tab.id, {
@@ -106,6 +139,7 @@ chrome.runtime.onMessage.addListener(async (arg, sender, sendResponse) => {
 					done, total
 				});
 			}
+			console.log(`pid ${pid}: fulfilled`);
 		}));
 		for (let i = 0; i < results.length; i++) {
 			const r = results[i];

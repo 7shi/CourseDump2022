@@ -17,8 +17,23 @@ function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function fetchRetry(url, options, retries = 3, interval = 1000) {
+	let ret;
+	for (let i = 0; i < retries; i++) {
+		if (i) console.log("retry", i);
+		await sleep(i ? interval : 200);
+		try {
+			ret = await fetch(url, options);
+			if (ret.status != 502) break;
+		} catch (e) {
+			if (i == retries - 1) throw e;
+		}
+	}
+	return ret;
+}
 
-async function CourseDownload(URLString) {
+
+async function CourseDownload(URLString, prefix = "") {
 	let course = URLString.split("/");
 	let id, name;
 
@@ -29,6 +44,10 @@ async function CourseDownload(URLString) {
 		let scanprogress = document.createElement("div");
 		scanprogress.className = "scanprogress cid" + id;
 			scanprogress.style.width = 0;
+			scanprogress.style.background = "darkcyan";
+			scanprogress.style.color = "white";
+			scanprogress.style.whiteSpace = "nowrap";
+			scanprogress.innerText = `${prefix}${id}/${name}`;
 		progressbar.append(scanprogress);
 		
 	} else { 
@@ -58,10 +77,12 @@ async function CourseDownload(URLString) {
 	let propName = '';
 	let courseImg = '';
 	let levelsN = 0;
+	let courseHtml = 'data:text/html;charset=utf-8,';
 	try {
-	let meta = fetch('https://app.memrise.com/community/course/' + id )
+	let meta = fetchRetry('https://app.memrise.com/community/course/' + id )
 	    .then(response => response.text())
 	    .then(html => {
+	        courseHtml += encodeURIComponent(html);
 	        var parser = new DOMParser();
 	        var doc = parser.parseFromString(html, "text/html");
 		levelsN     = (query => (query ? query.childElementCount : 1))(doc.querySelector('div.levels'));
@@ -69,7 +90,8 @@ async function CourseDownload(URLString) {
 		ava         = doc.querySelector('.creator-image img').src;
 		propName    = doc.querySelector('.course-name').innerText;
 		courseImg   = doc.querySelector('.course-photo img').src;
-		description = doc.querySelector('.course-description.text').innerText;
+		const desc = doc.querySelector('.course-description.text');
+		if (desc) description = desc.innerText;
 	    })
 	    .catch(function(err) {  
 	        console.log('Failed to fetch html: ', err);  
@@ -91,11 +113,14 @@ async function CourseDownload(URLString) {
 		subfolder = ``;
 	} else {
 		saveas = name + ` [` + id +`]`; //general name for csv and media folder
-		subfolder = name + ` by ` + author + ` [` + id +`]/`;
+		subfolder = `${name}_${id}/`;
 
 		//(info moved below)
-		download_queue.push([ava, subfolder + author + '.' + ava.split(".").slice(-1)]);
-		download_queue.push([courseImg, subfolder + name + '.' + courseImg.split(".").slice(-1)]);
+		if (!modifyMode) {
+			download_queue.push([courseHtml, `${subfolder}0.html`]);
+			download_queue.push([ava, subfolder + 'creator.' + ava.split(".").slice(-1)]);
+			download_queue.push([courseImg, subfolder + 'course.' + courseImg.split(".").slice(-1)]);
+		}
 	}
 
 
@@ -121,23 +146,37 @@ async function CourseDownload(URLString) {
 
 	let next = true;
 	for (let i = 1; next || i <= levelsN; i++) {
+		if (stopFlag) return;
 		//marking scanprogress
-		console.log("[" + name + "] scanning level " + i + "...");
+		console.log(`[${name}] ${i}/${levelsN}`);
 		document.querySelector('.scanprogress.cid' + id).style.width = Math.min(100, Math.round(10000. * i / (levelsN + MAX_ERR_ABORT/2))/100) + "%";
+		dwldprogress.innerText = `${download_queue.length}`;
 		
 		let empty_set_err = false;
 		try {
-			await sleep(200);
 			// get CSRF header
 			token = document.cookie.split(" ").find(cookie => cookie.includes("csrftoken")).split(/[=;]/g)[1];
-			response = await (await fetch("https://app.memrise.com/v1.19/learning_sessions/preview/", {
+			const options = {
 				"headers": { "Accept": "*/*", "Content-Type": "Application/json", "X-CSRFToken": token },
 				"body": "{\"session_source_id\":" + id + ",\"session_source_type\":\"course_id_and_level_index\",\"session_source_sub_index\":" + i + "}",
 				"method": "POST"
-			})).json();
+			};
+			let resp = await fetchRetry("https://app.memrise.com/v1.19/learning_sessions/preview/", options);
+			response = await resp.json();
+			if (!response.learnables) console.log(response);
 			// Continue after empty set
 			if (response.code == "PREVIEW_DOESNT_LOAD") {
 				empty_set_err = true;
+			}
+			if (empty_set_err || response.code == "MULTIMEDIA_LEVEL_UNSUPPORTED") {
+				let url = URLString.trim();
+				if (!url.endsWith("/")) url += "/";
+				url += `${i}/`;
+				download_queue.push([url, `${subfolder}${i}.html`]);
+			}
+			if (modifyMode) {
+				if (!response.learnables) throw new Error("no learnables");
+				continue;
 			}
 			// Check for media
 			if (!media_asked && !BATCH && 
@@ -332,6 +371,7 @@ async function CourseDownload(URLString) {
 			}
 		}
 	}
+	if (modifyMode) return;
 
 
 	//global flags (e.g. has_audio, has_video..) are needed to keep consistency of column content between all table rows
@@ -391,28 +431,130 @@ async function CourseDownload(URLString) {
 		downloadElement.download = saveas + '.csv';
 		downloadElement.click();
 	} else {
-		download_queue.push([csvdata, subfolder + saveas + '.csv']);
+		download_queue.push([csvdata, subfolder + 'table.csv']);
 	}
 
 	//appending files to media download queue
 	if (download_media) {console.log("[" + name + "] media files found: " + media_download_urls.size)};	
 	if (!FAKE_DWLD) {
-		let media_batch = Array.from(media_download_urls).map(url => [url, `${subfolder}${saveas}_media(${media_download_urls.size})/` + PaddedFilename(url)]);
+		let media_batch = Array.from(media_download_urls).map(url => [url, `${subfolder}media/` + PaddedFilename(url)]);
 		download_queue.push(...media_batch);
 	} 
+	dwldprogress.innerText = `${download_queue.length}`;
 };
 
 
-function mediaDownload(all_downloads) {
-	
-	let dwldprogress = document.createElement("div");
-	dwldprogress.id = "downprogress";
-		dwldprogress.style.width = 0;
-	document.querySelector('.scanprogress').append(dwldprogress);
+let stopFlag = false;
 
+function stopOrResume() {
+	if (!stopFlag) {
+		console.log("STOP");
+		stopFlag = true;
+		chrome.runtime.sendMessage({
+			type: "coursedump_stop"
+		});
+	} else if (downloading) {
+		console.log("RESUME");
+		stopFlag = false;
+		chrome.runtime.sendMessage({
+			type: "coursedump_download"
+		});
+	} else {
+		console.log("Can not RESUME.");
+	}
+}
+
+let errors, downloading = false;
+
+async function mediaDownload(all_downloads) {
+	if (stopFlag) return;
+	console.log("preparing download queue...");
+	const fileUrl = {};
+	const down_d = [];
+	const down_u = [];
+	errors = 0;
+	for (let [url, filename] of all_downloads) {
+		const paths = filename.split("/");
+		const dn = paths.slice(0, -1).join("/");
+		let bn = paths.slice(-1)[0];
+		if (bn.startsWith(".")) {
+			bn = "_" + bn.slice(1);
+			filename = dn + "/" + bn;
+		}
+		let p = bn.indexOf("?");
+		if (p > 0) {
+			bn = bn.slice(0, p);
+			filename = dn + "/" + bn;
+		}
+		const bnd = decodeURI(bn).replaceAll("%", "_").normalize("NFC")
+		if (bn != bnd) {
+			bn = bnd;
+			filename = dn + "/" + bn;
+		}
+		if (filename in fileUrl) {
+			console.error("duplicate:", filename);
+			const url2 = fileUrl[filename];
+			if (url2 != url) {
+				console.error("- url mismatch:", url2);
+			}
+		} else {
+			fileUrl[filename] = url;
+			if (url.startsWith("data:")) {
+				down_d.push([url, filename]);
+			} else {
+				down_u.push([url, filename]);
+			}
+		}
+	}
+
+	dwldprogress.style.width = 0;
+	dwldprogress.style.background = "darkred";
+
+	console.log("Data:", down_d.length);
+	console.log("URL:", down_u.length);
+
+	const downloads = down_d.concat(down_u);
+	console.log("sending download queue:", downloads.length);
+	chrome.runtime.sendMessage({
+		type: "coursedump_clear"
+	});
+	let len = 0, start = 0;
+	const maxlen = 512 * 1024;
+	for (let i = 0; i <= downloads.length; i++) {
+		const final = i == downloads.length;
+		if (len > maxlen || final) {
+			const prog = Math.floor(10000 * i / downloads.length) / 100;
+			dwldprogress.innerText = `${i}/${downloads.length} (${prog}%)`;
+			dwldprogress.style.width = `${prog}%`;
+			await chrome.runtime.sendMessage({
+				type: "coursedump_add",
+				collection: downloads.slice(start, i)
+			});
+			start = i;
+		}
+		if (!final) {
+			const dl = downloads[i];
+			len += dl[0].length + dl[1].length;
+		}
+	}
+
+	dwldprogress.style.width = 0;
+	dwldprogress.style.background = "darkorange";
+
+	downloading = true;
+	if (noDownload) {
+		await chrome.runtime.sendMessage({
+			type: "coursedump_dump"
+		});
+		console.log("Stop. Please resume if you want to download.");
+		stopFlag = true;
+		return;
+	}
+	console.log("start downloading...");
 	chrome.runtime.sendMessage({
 		type: "coursedump_download",
-		collection: all_downloads
+		max: downloadMode ? 1 : maxConnections + 5,
+		dump: !downloadMode
 	});
 
 }
@@ -420,11 +562,12 @@ function mediaDownload(all_downloads) {
 
 
 //------MAIN
-let progressbar;
+let progressbar, dwldprogress;
 progressbar = document.getElementById('dumpprogress');
 if (!progressbar) {
 	progressbar = document.createElement("div");	
 	progressbar.id = "dumpprogress";
+	progressbar.ondblclick = stopOrResume;
 	progresspadding = document.createElement("div");	
 	progresspadding.id = "progresspadding";
 	try {
@@ -434,6 +577,12 @@ if (!progressbar) {
 		document.body.prepend(progressbar);
 	}
 //	document.getElementById('header').prepend(progressbar);
+	dwldprogress = document.createElement("div");
+	dwldprogress.id = "downprogress";
+	dwldprogress.style.background = "transparent";
+	dwldprogress.style.color = "white";
+	dwldprogress.style.whiteSpace = "nowrap"
+	progressbar.append(dwldprogress);
 }
 let download_queue = [];
 
@@ -444,6 +593,7 @@ chrome.runtime.onMessage.addListener(
 	if (type === "coursedump_progress_upd") {
 		if (prog === "done") {
 			progressbar.className = "done";
+			console.log("[", arg.done, "/", arg.total, "] errors:", errors);
 			
 			
 			//help
@@ -451,13 +601,25 @@ chrome.runtime.onMessage.addListener(
 				window.open('https://github.com/Eltaurus-Lt/CourseDump2022#importing-into-anki', '_blank').focus();
 			}}, 200);
 			
+		} else if (prog == "stopped") {
+			console.log("stopped");
 		} else { 
-			console.log(prog + " media queued");
-			document.getElementById("downprogress").style.width = prog;
+			const t = `${arg.done}/${arg.total} (${prog})`;
+			// console.log(t, "media queued");
+			dwldprogress.innerText = t;
+			dwldprogress.style.width = prog;
 		}
+	} else if (type == "coursedump_error") {
+		errors++;
+		console.error(arg.error, arg.url, arg.filename);
 	}
 });
 
+
+const maxConnections = 10;
+const modifyMode = false;
+let downloadMode = false;
+let noDownload = false;
 
 (async function(){
 	let currentUrl = window.location.toString();
@@ -494,24 +656,57 @@ chrome.runtime.onMessage.addListener(
 		});
 	}
 	
-	if (BATCH) {
-		await fetch(chrome.runtime.getURL('queue.txt')).then(
-				(response) => {
-					return response.text().then(
-					async (text) => {
-						await Promise.all(text.split("\n").map(
-						async (queueline) => {
-							console.log("downloading " + queueline);
-							await CourseDownload(queueline);
-						}));
-						progressbar.className = "halfdone";
-						mediaDownload(download_queue);
-					});				
-				}
-	);
-	} else {
-		if (await CourseDownload(currentUrl) != -1) {
+	try {
+		const missing = await (await fetch(chrome.runtime.getURL('missing.txt'))).text();
+		downloadMode = missing.length > 0;
+		if (downloadMode) {
+			noDownload = false;
+			for (const line of missing.split("\n")) {
+				const data = line.trim().split("\t");
+				if (data.length == 2) download_queue.push(data);
+			}
 			mediaDownload(download_queue);
+		} else if (modifyMode || BATCH) {
+			const response = await fetch(chrome.runtime.getURL('queue.txt'));
+			const text = await response.text();
+			const queue = [];
+			for (const line of text.split("\n")) {
+				const url = line.trim().split("\t")[0];
+				if (url.startsWith("https://app.memrise.com/community/course/")) {
+					if (url in queue) {
+						console.warn("duplicate:", url);
+					} else {
+						queue.push(url);
+					}
+				}
+			}
+			const total = queue.length;
+			let done = 0;
+			await Promise.all(Array(maxConnections).fill().map(async () => {
+				while (!stopFlag && queue.length) {
+					const url = queue.shift();
+					const prefix = `${total - queue.length}/${total}: `;
+					console.log(prefix + url);
+					await CourseDownload(url, prefix);
+					done++;
+					if (queue.length) {
+						for (const div of progressbar.getElementsByTagName('div')) {
+							if (div.innerText.startsWith(prefix)) {
+								progressbar.removeChild(div);
+								break;
+							}
+						}
+					}
+				}
+			}));
+			// progressbar.className = "halfdone";
+			mediaDownload(download_queue);
+		} else {
+			if (await CourseDownload(currentUrl) != -1) {
+				mediaDownload(download_queue);
+			}
 		}
+	} catch (err) {
+		console.error(err);
 	}
-})()
+})();
