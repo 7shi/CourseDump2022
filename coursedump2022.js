@@ -550,6 +550,7 @@ async function mediaDownload(all_downloads) {
 		await chrome.runtime.sendMessage({
 			type: "coursedump_dump"
 		});
+		console.log("done.");
 		console.log("Stop. Please resume if you want to download.");
 		stopFlag = true;
 		return;

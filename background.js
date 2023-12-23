@@ -105,7 +105,7 @@ chrome.runtime.onMessage.addListener(async (arg, sender, sendResponse) => {
 		queue.push(...arg.collection);
 		total += arg.collection.length;
 	} else if (arg.type === "coursedump_dump") {
-		downloadFiles();
+		await downloadFiles();
 	} else if (arg.type === "coursedump_download") {
 		stopFlag = false;
 		if (arg.collection) {
