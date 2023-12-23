@@ -115,7 +115,7 @@ chrome.runtime.onMessage.addListener(async (arg, sender, sendResponse) => {
 		}
 		if (arg.max) maxConnections = arg.max;
 		if (arg.dump) await downloadFiles();
-		let pids = Array(Math.min(total, maxConnections)).fill().map((_, i) => i + 1);
+		const pids = Array(Math.min(total, maxConnections)).fill().map((_, i) => i + 1);
 		console.log("starting", pids.length, "promise(s)...");
 		const results = await Promise.allSettled(pids.map(async pid => {
 			while (!stopFlag && queue.length) {

@@ -714,7 +714,8 @@ function messageListener(arg, sender, sendResponse) {
 			}
 			const total = queue.length;
 			let done = 0;
-			await Promise.all(Array(maxConnections).fill().map(async () => {
+			const pids = Array(Math.min(total, maxConnections)).fill().map((_, i) => i + 1);
+			await Promise.allSettled(pids.map(async _ => {
 				while (!stopping && queue.length) {
 					const url = queue.shift();
 					const prefix = `${total - queue.length}/${total}: `;
