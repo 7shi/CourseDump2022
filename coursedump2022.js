@@ -528,14 +528,24 @@ async function mediaDownload(all_downloads) {
 	const down_u = [];
 	errors = 0;
 	for (let [url, filename] of all_downloads) {
-		const paths = filename.split("/");
-		const dn = paths.slice(0, -1).join("/");
-		let bn = paths.slice(-1)[0];
+		let p = url.lastIndexOf("/") + 1;
+		if (p <= 0) {
+			console.error("invalid url:", url);
+			continue;
+		}
+		url = encodeURI(url.slice(0, p)) + encodeURIComponent(url.slice(p));
+		p = filename.lastIndexOf("/");
+		if (p < 0) {
+			console.error("invalid filename:", filename);
+			continue;
+		}
+		const dn = filename.slice(0, p);
+		let bn = filename.slice(p + 1);
 		if (bn.startsWith(".")) {
 			bn = "_" + bn.slice(1);
 			filename = dn + "/" + bn;
 		}
-		let p = bn.indexOf("?");
+		p = bn.indexOf("?");
 		if (p > 0) {
 			bn = bn.slice(0, p);
 			filename = dn + "/" + bn;
