@@ -22,7 +22,7 @@
   "action": {},
   "content_security_policy": {},
   "web_accessible_resources": [{
-    "resources": ["queue.txt", "settings.json"],
+    "resources": ["queue.txt", "settings.json", "missing.txt"],
     "matches": ["<all_urls>"]
     }],
    "content_scripts": [
