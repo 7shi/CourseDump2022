@@ -1,17 +1,91 @@
-//fallback settings
-let ALWAYS_DWLD_MEDIA = false,
-	ANKI_HELP_PROMPT = true,
-	BATCH = false,
-	LEVEL_TAGS = true,
-	EXTRA_INFO = false,
-	COLLAPSE_COLUMNS = true,
+var initialized, stopping, download_queue, downloadMode;
+var progressbar, dwldprogress;
+var errors, downloading;
 
-	MAX_ERR_ABORT = 5,
-	MIN_FILENAME_LENGTH = 8,
-	MAX_EXTRA_FIELDS = 5,
-	LEARNABLE_IDS = false,
-	FAKE_DWLD = false,
+var maxConnections = 10;
+var modifyMode = false;
+var noDownload = false;
+
+var ALWAYS_DWLD_MEDIA, ANKI_HELP_PROMPT, BATCH, LEVEL_TAGS, EXTRA_INFO, COLLAPSE_COLUMNS;
+var MAX_ERR_ABORT, MIN_FILENAME_LENGTH, MAX_EXTRA_FIELDS, LEARNABLE_IDS, FAKE_DWLD, PLAIN_DWLD;
+
+async function initialize() {
+	await readSettings();
+	if (chrome.runtime.onMessage.hasListener(messageListener)) {
+		chrome.runtime.onMessage.addListener(messageListener);
+	}
+
+	initialized = true;
+	stopping = false;
+	downloading = false;
+	downloadMode = false;
+	download_queue = [];
+
+	// progressbar = document.getElementById('dumpprogress');
+	progressbar = document.createElement("div");
+	progressbar.id = "dumpprogress";
+	progresspadding = document.createElement("div");
+	progresspadding.id = "progresspadding";
+	try {
+		document.querySelector(".rebrand-header-root").prepend(progressbar);
+		document.querySelector("#page-head").prepend(progresspadding);
+	} catch (err) {
+		document.body.prepend(progressbar);
+	}
+	// document.getElementById('header').prepend(progressbar);
+	dwldprogress = document.createElement("div");
+	dwldprogress.id = "downprogress";
+	dwldprogress.style.background = "transparent";
+	dwldprogress.style.color = "white";
+	dwldprogress.style.whiteSpace = "nowrap"
+	progressbar.append(dwldprogress);
+}
+
+async function readSettings() {
+	//fallback settings
+	ALWAYS_DWLD_MEDIA = false;
+	ANKI_HELP_PROMPT = true;
+	BATCH = false;
+	LEVEL_TAGS = true;
+	EXTRA_INFO = false;
+	COLLAPSE_COLUMNS = true;
+
+	MAX_ERR_ABORT = 5;
+	MIN_FILENAME_LENGTH = 8;
+	MAX_EXTRA_FIELDS = 5;
+	LEARNABLE_IDS = false;
+	FAKE_DWLD = false;
 	PLAIN_DWLD = false;
+
+	//overwrite settings with settings from json file
+	try {
+		const response = await fetch(chrome.runtime.getURL('settings.json'))
+		const settings = await response.json();
+		try {
+			ALWAYS_DWLD_MEDIA = settings.user_settings.always_download_media;
+			ANKI_HELP_PROMPT = settings.user_settings.display_anki_help_prompt;
+			BATCH = settings.user_settings.batch_download;
+			LEVEL_TAGS = settings.user_settings.level_tags;
+			EXTRA_INFO = settings.user_settings.extra_info;
+			COLLAPSE_COLUMNS = true;//settings.user_settings.collapse_columns;
+
+			LEARNABLE_IDS = settings.extra_settings.learnable_ids;
+			PLAIN_DWLD = settings.extra_settings.exclude_course_metadata;
+			FAKE_DWLD = settings.extra_settings.skip_media_download;
+
+			MAX_ERR_ABORT = settings.basic_settings.max_level_skip;
+			MIN_FILENAME_LENGTH = settings.basic_settings.min_filename_length;
+			MAX_EXTRA_FIELDS = settings.basic_settings.max_extra_fields;
+
+			//console.log(MIN_FILENAME_LENGTH);
+		} catch (err) {
+			console.log('overwriting settings error')
+		};
+	} catch (error) {
+		console.error('Error reading settings.json:', error);
+	}
+}
+
 
 function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
@@ -149,7 +223,7 @@ async function CourseDownload(URLString, prefix = "") {
 
 	let next = true;
 	for (let i = 1; next || i <= levelsN; i++) {
-		if (stopFlag) return;
+		if (stopping) return;
 		//marking scanprogress
 		console.log(`[${name}] ${i}/${levelsN}`);
 		document.querySelector('.scanprogress.cid' + id).style.width = Math.min(100, Math.round(10000. * i / (levelsN + MAX_ERR_ABORT/2))/100) + "%";
@@ -446,31 +520,8 @@ async function CourseDownload(URLString, prefix = "") {
 	dwldprogress.innerText = `${download_queue.length}`;
 };
 
-
-let stopFlag = false;
-
-function stopOrResume() {
-	if (!stopFlag) {
-		console.log("STOP");
-		stopFlag = true;
-		chrome.runtime.sendMessage({
-			type: "coursedump_stop"
-		});
-	} else if (downloading) {
-		console.log("RESUME");
-		stopFlag = false;
-		chrome.runtime.sendMessage({
-			type: "coursedump_download"
-		});
-	} else {
-		console.log("Can not RESUME.");
-	}
-}
-
-let errors, downloading = false;
-
 async function mediaDownload(all_downloads) {
-	if (stopFlag) return;
+	if (stopping) return;
 	console.log("preparing download queue...");
 	const fileUrl = {};
 	const down_d = [];
@@ -547,12 +598,13 @@ async function mediaDownload(all_downloads) {
 
 	downloading = true;
 	if (noDownload) {
+		console.log("dumping files...");
 		await chrome.runtime.sendMessage({
 			type: "coursedump_dump"
 		});
 		console.log("done.");
 		console.log("Stop. Please resume if you want to download.");
-		stopFlag = true;
+		stopping = true;
 		return;
 	}
 	console.log("start downloading...");
@@ -561,54 +613,51 @@ async function mediaDownload(all_downloads) {
 		max: downloadMode ? 1 : maxConnections + 5,
 		dump: !downloadMode
 	});
-
 }
-
 
 
 //------MAIN
-let progressbar, dwldprogress;
-progressbar = document.getElementById('dumpprogress');
-if (!progressbar) {
-	progressbar = document.createElement("div");	
-	progressbar.id = "dumpprogress";
-	progressbar.ondblclick = stopOrResume;
-	progresspadding = document.createElement("div");	
-	progresspadding.id = "progresspadding";
-	try {
-		document.querySelector(".rebrand-header-root").prepend(progressbar);
-		document.querySelector("#page-head").prepend(progresspadding);
-	} catch (err) {
-		document.body.prepend(progressbar);
-	}
-//	document.getElementById('header').prepend(progressbar);
-	dwldprogress = document.createElement("div");
-	dwldprogress.id = "downprogress";
-	dwldprogress.style.background = "transparent";
-	dwldprogress.style.color = "white";
-	dwldprogress.style.whiteSpace = "nowrap"
-	progressbar.append(dwldprogress);
-}
-let download_queue = [];
 
-chrome.runtime.onMessage.addListener(
-   function (arg, sender, sendResponse) {
-      var type = arg.type;
-      var prog = arg.progress;
+function stopOrResume() {
+	if (!stopping) {
+		console.log("STOP");
+		stopping = true;
+		chrome.runtime.sendMessage({
+			type: "coursedump_stop"
+		});
+	} else if (downloading) {
+		console.log("RESUME");
+		stopping = false;
+		chrome.runtime.sendMessage({
+			type: "coursedump_download"
+		});
+	} else {
+		console.log("Can not RESUME.");
+	}
+}
+
+function messageListener(arg, sender, sendResponse) {
+	var type = arg.type;
+	var prog = arg.progress;
 	if (type === "coursedump_progress_upd") {
 		if (prog === "done") {
 			progressbar.className = "done";
+			const divs = Array.from(progressbar.getElementsByTagName('div'));
+			for (const div of divs) {
+				progressbar.removeChild(div);
+			}
 			console.log("[", arg.done, "/", arg.total, "] errors:", errors);
-			
-			
+
 			//help
-			setTimeout(()=> {if (ANKI_HELP_PROMPT && !BATCH && confirm('Would you like some help with importing the downloaded data into Anki?')) {
-				window.open('https://github.com/Eltaurus-Lt/CourseDump2022#importing-into-anki', '_blank').focus();
-			}}, 200);
-			
+			setTimeout(() => {
+				if (ANKI_HELP_PROMPT && !BATCH && confirm('Would you like some help with importing the downloaded data into Anki?')) {
+					window.open('https://github.com/Eltaurus-Lt/CourseDump2022#importing-into-anki', '_blank').focus();
+				}
+			}, 200);
+
 		} else if (prog == "stopped") {
 			console.log("stopped");
-		} else { 
+		} else {
 			const t = `${arg.done}/${arg.total} (${prog})`;
 			// console.log(t, "media queued");
 			dwldprogress.innerText = t;
@@ -618,49 +667,17 @@ chrome.runtime.onMessage.addListener(
 		errors++;
 		console.error(arg.error, arg.url, arg.filename);
 	}
-});
+}
 
+(async function () {
+	if (initialized) return stopOrResume();
+	await initialize();
 
-const maxConnections = 10;
-const modifyMode = false;
-let downloadMode = false;
-let noDownload = false;
-
-(async function(){
 	let currentUrl = window.location.toString();
 	if (currentUrl.split("/")[2] !== 'app.memrise.com') {
-		alert("The extension should be used on the memrise.com site"); 
+		alert("The extension should be used on the memrise.com site");
 		return -1;
 	}
-
-	//overwrite settings with settings from json file
-	if (true) {
-		await fetch(chrome.runtime.getURL('settings.json'))
-		.then(response => response.json()).then(settings => {
-			try {
-				ALWAYS_DWLD_MEDIA = settings.user_settings.always_download_media;
-				ANKI_HELP_PROMPT = settings.user_settings.display_anki_help_prompt;
-				BATCH = settings.user_settings.batch_download;
-				LEVEL_TAGS = settings.user_settings.level_tags;
-				EXTRA_INFO = settings.user_settings.extra_info;
-				COLLAPSE_COLUMNS = true;//settings.user_settings.collapse_columns;
-
-				LEARNABLE_IDS = settings.extra_settings.learnable_ids;
-				PLAIN_DWLD = settings.extra_settings.exclude_course_metadata;
-				FAKE_DWLD = settings.extra_settings.skip_media_download;
-
-				MAX_ERR_ABORT = settings.basic_settings.max_level_skip;
-				MIN_FILENAME_LENGTH = settings.basic_settings.min_filename_length;
-				MAX_EXTRA_FIELDS = settings.basic_settings.max_extra_fields;
-
-				//console.log(MIN_FILENAME_LENGTH);
-			} catch (err) {console.log('overwriting settings error')};
-		}
-		).catch(error => {
-			console.error('Error reading settings.json:', error);
-		});
-	}
-	
 	try {
 		const missing = await (await fetch(chrome.runtime.getURL('missing.txt'))).text();
 		downloadMode = missing.length > 0;
@@ -688,7 +705,7 @@ let noDownload = false;
 			const total = queue.length;
 			let done = 0;
 			await Promise.all(Array(maxConnections).fill().map(async () => {
-				while (!stopFlag && queue.length) {
+				while (!stopping && queue.length) {
 					const url = queue.shift();
 					const prefix = `${total - queue.length}/${total}: `;
 					console.log(prefix + url);
