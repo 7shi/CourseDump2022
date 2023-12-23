@@ -87,6 +87,16 @@ async function readSettings() {
 }
 
 
+async function readAllLines(file) {
+	try {
+		const response = await fetch(chrome.runtime.getURL(file));
+		const text = await response.text();
+		return text.replaceAll("\r\n", "\n").split("\n");
+	} catch {
+		return [];
+	}
+}
+
 function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -689,20 +699,19 @@ function messageListener(arg, sender, sendResponse) {
 		return -1;
 	}
 	try {
-		const missing = await (await fetch(chrome.runtime.getURL('missing.txt'))).text();
+		const missing = await readAllLines("missing.txt");
 		downloadMode = missing.length > 0;
 		if (downloadMode) {
 			noDownload = false;
-			for (const line of missing.split("\n")) {
+			for (const line of missing) {
 				const data = line.trim().split("\t");
 				if (data.length == 2) download_queue.push(data);
 			}
 			mediaDownload(download_queue);
 		} else if (modifyMode || BATCH) {
-			const response = await fetch(chrome.runtime.getURL('queue.txt'));
-			const text = await response.text();
 			const queue = [];
-			for (const line of text.split("\n")) {
+			const lines = await readAllLines("queue.txt");
+			for (const line of lines) {
 				const url = line.trim().split("\t")[0];
 				if (url.startsWith("https://app.memrise.com/community/course/")) {
 					if (url in queue) {
