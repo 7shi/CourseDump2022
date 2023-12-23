@@ -9,7 +9,7 @@ function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const apiTimeout = 5000;
+const apiTimeout = 10000;
 
 function download(options) {
 	return new Promise(async (resolve, reject) => {
