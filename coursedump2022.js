@@ -531,6 +531,7 @@ async function mediaDownload(all_downloads) {
 				collection: downloads.slice(start, i)
 			});
 			start = i;
+			len = 0;
 		}
 		if (!final) {
 			const dl = downloads[i];
