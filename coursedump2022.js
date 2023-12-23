@@ -11,7 +11,7 @@ var MAX_ERR_ABORT, MIN_FILENAME_LENGTH, MAX_EXTRA_FIELDS, LEARNABLE_IDS, FAKE_DW
 
 async function initialize() {
 	await readSettings();
-	if (chrome.runtime.onMessage.hasListener(messageListener)) {
+	if (!chrome.runtime.onMessage.hasListener(messageListener)) {
 		chrome.runtime.onMessage.addListener(messageListener);
 	}
 
