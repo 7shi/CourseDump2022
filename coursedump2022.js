@@ -120,7 +120,7 @@ async function CourseDownload(URLString, prefix = "") {
 			download_queue.push([courseHtml, `${subfolder}0.html`]);
 			download_queue.push([ava, subfolder + 'creator.' + ava.split(".").slice(-1)]);
 			const imgpath = courseImg.split("/");
-			const imgdiv  = imapath[imgpath.length - 1].split(".");
+			const imgdiv  = imgpath[imgpath.length - 1].split(".");
 			const imgext  = imgdiv.length > 1 ? imgdiv[imgdiv.length - 1] : "jpg";
 			download_queue.push([courseImg, subfolder + 'course.' + imgext]);
 		}
