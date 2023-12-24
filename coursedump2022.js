@@ -139,7 +139,7 @@ async function CourseDownload(URLString, prefix = "") {
 		if (!BATCH) {
 			alert("Please use the extention on an open Memrise course tab"); 
 		} else {
-			console.log('"' + URLString + '" in queue.txt is not a Memrise course url');
+			console.log('"' + URLString + '" in queue.txt is not a Memrise course URL');
 		}
 		return -1; 
 	};
@@ -543,7 +543,7 @@ async function mediaDownload(all_downloads) {
 		if (fixURL && url.startsWith("http")) {
 			p = url.lastIndexOf("/") + 1;
 			if (p <= 0) {
-				console.error("invalid url:", url);
+				console.error("invalid URL:", url);
 				continue;
 			}
 			url = encodeURI(url.slice(0, p)) + encodeURIComponent(url.slice(p));
@@ -573,7 +573,7 @@ async function mediaDownload(all_downloads) {
 			console.error("duplicate:", filename);
 			const url2 = fileUrl[filename];
 			if (url2 != url) {
-				console.error("- url mismatch:", url2);
+				console.error("- URL mismatch:", url2);
 			}
 		} else {
 			fileUrl[filename] = url;
@@ -582,7 +582,7 @@ async function mediaDownload(all_downloads) {
 			} else if (url.startsWith("http")) {
 				down_u.push([url, filename]);
 			} else {
-				console.error("invalid url:", url);
+				console.error("invalid URL:", url);
 			}
 		}
 	}
