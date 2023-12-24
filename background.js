@@ -64,7 +64,7 @@ function stopAll() {
 	stopFlag = true;
 }
 
-let maxConnections = 15;
+let maxConnections = 10;
 let queue = [];
 
 async function downloadFiles() {
