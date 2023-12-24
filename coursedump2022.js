@@ -91,7 +91,7 @@ async function readAllLines(file) {
 	try {
 		const response = await fetch(chrome.runtime.getURL(file));
 		const text = await response.text();
-        return text.length ? text.replaceAll("\r\n", "\n").split("\n") : [];
+		return text.length ? text.replaceAll("\r\n", "\n").split("\n") : [];
 	} catch {
 		return [];
 	}
