@@ -579,8 +579,10 @@ async function mediaDownload(all_downloads) {
 			fileUrl[filename] = url;
 			if (url.startsWith("data:")) {
 				down_d.push([url, filename]);
-			} else {
+			} else if (url.startsWith("http")) {
 				down_u.push([url, filename]);
+			} else {
+				console.error("invalid url:", url);
 			}
 		}
 	}
