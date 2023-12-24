@@ -5,6 +5,7 @@ var errors, downloading;
 var maxConnections = 10;
 var modifyMode = false;
 var noDownload = false;
+var fixURL = false;
 
 var ALWAYS_DWLD_MEDIA, ANKI_HELP_PROMPT, BATCH, LEVEL_TAGS, EXTRA_INFO, COLLAPSE_COLUMNS;
 var MAX_ERR_ABORT, MIN_FILENAME_LENGTH, MAX_EXTRA_FIELDS, LEARNABLE_IDS, FAKE_DWLD, PLAIN_DWLD;
@@ -538,12 +539,15 @@ async function mediaDownload(all_downloads) {
 	const down_u = [];
 	errors = 0;
 	for (let [url, filename] of all_downloads) {
-		let p = url.lastIndexOf("/") + 1;
-		if (p <= 0) {
-			console.error("invalid url:", url);
-			continue;
+		let p;
+		if (fixURL && url.startsWith("http")) {
+			p = url.lastIndexOf("/") + 1;
+			if (p <= 0) {
+				console.error("invalid url:", url);
+				continue;
+			}
+			url = encodeURI(url.slice(0, p)) + encodeURIComponent(url.slice(p));
 		}
-		url = encodeURI(url.slice(0, p)) + encodeURIComponent(url.slice(p));
 		p = filename.lastIndexOf("/");
 		if (p < 0) {
 			console.error("invalid filename:", filename);
