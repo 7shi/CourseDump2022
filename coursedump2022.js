@@ -1,6 +1,7 @@
 var initialized, stopping, download_queue, downloadMode;
 var progressbar, dwldprogress;
 var errors, downloading;
+var courseRange = []; // [[start, end], ...]
 
 var maxConnections = 10;
 var modifyMode = false;
@@ -705,7 +706,17 @@ function messageListener(arg, sender, sendResponse) {
 		return -1;
 	}
 	try {
-		const missing = await readAllLines("missing.txt");
+		let missing;
+		if (courseRange.length) {
+			missing = [];
+			for (const [start, end] of courseRange) {
+				for (let i = start; i <= end; i++) {
+					missing.push(`https://app.memrise.com/community/course/${i}/\tcourse/${i}.html`);
+				}
+			}
+		} else {
+			missing = await readAllLines("missing.txt");
+		}
 		downloadMode = missing.length > 0;
 		if (downloadMode) {
 			noDownload = false;
