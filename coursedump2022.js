@@ -637,7 +637,7 @@ async function mediaDownload(all_downloads) {
 	console.log("start downloading...");
 	chrome.runtime.sendMessage({
 		type: "coursedump_download",
-		max: downloadMode ? 1 : maxConnections,
+		max: downloadMode ? 1 : maxConnections + 5,
 		dump: !downloadMode
 	});
 }
