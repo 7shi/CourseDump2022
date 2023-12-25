@@ -250,7 +250,7 @@ async function CourseDownload(URLString, prefix = "") {
 		if (stopping) return;
 		//marking scanprogress
 		addQueue();
-		// console.log(`[${name}] ${i}/${levelsN}`);
+		if (i > levelsN) console.log(`[${name}] ${i}/${levelsN}`);
 		const prog = Math.min(100, Math.round(10000. * i / (levelsN + MAX_ERR_ABORT/2))/100) + "%";
 		scanprogress.style.width = prog;
 		scanprogress.innerText = `${caption} | ${i}/${levelsN} (${prog}) ${media_added.size} media`;
