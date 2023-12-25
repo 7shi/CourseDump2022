@@ -121,19 +121,20 @@ async function fetchRetry(url, options, retries = 3, interval = 1000) {
 
 async function CourseDownload(URLString, prefix = "") {
 	let course = URLString.split("/");
-	let id, name;
+	let id, name, caption, scanprogress;
 
 	if (course[4] === "course") { 
 		id = course[5]; 
 		name = course[6];
+		caption = `${prefix}${id}/${name}`;
 
-		let scanprogress = document.createElement("div");
+		scanprogress = document.createElement("div");
 		scanprogress.className = "scanprogress cid" + id;
 			scanprogress.style.width = 0;
 			scanprogress.style.background = "darkcyan";
 			scanprogress.style.color = "white";
 			scanprogress.style.whiteSpace = "nowrap";
-			scanprogress.innerText = `${prefix}${id}/${name}`;
+			scanprogress.innerText = caption;
 		progressbar.append(scanprogress);
 		
 	} else { 
@@ -186,11 +187,11 @@ async function CourseDownload(URLString, prefix = "") {
 	
 	} catch (err) {}
 	console.log("course: ", propName);
-	console.log("about: ", description);
-	console.log("by: ", author);
-	console.log("ava ", ava);
-	console.log("icon ", courseImg);
-	console.log("number of levels: ", levelsN);
+	// console.log("about: ", description);
+	// console.log("by: ", author);
+	// console.log("ava ", ava);
+	// console.log("icon ", courseImg);
+	// console.log("number of levels: ", levelsN);
 	
 	//choosing names and queueing meta
 	let saveas, subfolder;
@@ -225,6 +226,7 @@ async function CourseDownload(URLString, prefix = "") {
 	let has_definitions = false;
 	let has_learnable = false;
 	let media_download_urls = new Set();
+	let media_added = new Set();
 	let table = [];
 
 	if (ALWAYS_DWLD_MEDIA) {
@@ -232,14 +234,26 @@ async function CourseDownload(URLString, prefix = "") {
 		download_media = true;
 	}
 
+	function addQueue() {
+		if (FAKE_DWLD) return;
+		const diff = [...media_download_urls].filter(x => !media_added.has(x));
+		for (const url of diff) {
+			download_queue.push([url, `${subfolder}media/` + PaddedFilename(url)]);
+			media_added.add(url);
+		}
+		dwldprogress.innerText = `${download_queue.length}`;
+	}
+
 
 	let next = true;
 	for (let i = 1; next || i <= levelsN; i++) {
 		if (stopping) return;
 		//marking scanprogress
-		console.log(`[${name}] ${i}/${levelsN}`);
-		document.querySelector('.scanprogress.cid' + id).style.width = Math.min(100, Math.round(10000. * i / (levelsN + MAX_ERR_ABORT/2))/100) + "%";
-		dwldprogress.innerText = `${download_queue.length}`;
+		addQueue();
+		// console.log(`[${name}] ${i}/${levelsN}`);
+		const prog = Math.min(100, Math.round(10000. * i / (levelsN + MAX_ERR_ABORT/2))/100) + "%";
+		scanprogress.style.width = prog;
+		scanprogress.innerText = `${caption} | ${i}/${levelsN} (${prog}) ${media_added.size} media`;
 		
 		let empty_set_err = false;
 		try {
@@ -525,11 +539,7 @@ async function CourseDownload(URLString, prefix = "") {
 
 	//appending files to media download queue
 	if (download_media) {console.log("[" + name + "] media files found: " + media_download_urls.size)};	
-	if (!FAKE_DWLD) {
-		let media_batch = Array.from(media_download_urls).map(url => [url, `${subfolder}media/` + PaddedFilename(url)]);
-		download_queue.push(...media_batch);
-	} 
-	dwldprogress.innerText = `${download_queue.length}`;
+	addQueue();
 };
 
 async function mediaDownload(all_downloads) {
@@ -745,7 +755,7 @@ function messageListener(arg, sender, sendResponse) {
 				while (!stopping && queue.length) {
 					const url = queue.shift();
 					const prefix = `${total - queue.length}/${total}: `;
-					console.log(prefix + url);
+					// console.log(prefix + url);
 					await CourseDownload(url, prefix);
 					done++;
 					if (queue.length) {
