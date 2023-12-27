@@ -299,7 +299,7 @@ async function CourseDownload(URLString, prefix = "") {
 			if (LEVEL_TAGS) {
 				try {
 					level_tag = `"` + response.session_source_info.name.replaceAll('"', '""') + `::` + ((levelsN && levelsN > 99 && i < 100) ? (`0`) : ``) + ((i < 10) ? (`0` + i) : i) + `_` + response.session_source_info.level_name.replaceAll('"', '""') + `"`;
-				} catch (error) {console.log(`${error.name}: ${error.message}`);}
+				} catch (error) {/*console.log(`${error.name}: ${error.message}`);*/}
 				level_tag = level_tag.replaceAll(' ','_');
 			}
 
@@ -538,7 +538,7 @@ async function CourseDownload(URLString, prefix = "") {
 	}
 
 	//appending files to media download queue
-	if (download_media) {console.log("[" + name + "] media files found: " + media_download_urls.size)};	
+	// if (download_media) {console.log("[" + name + "] media files found: " + media_download_urls.size)};
 	addQueue();
 };
 
